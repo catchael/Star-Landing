@@ -1,0 +1,4 @@
+name: Star Landing Controller
+description: Star Landing controller with Android tilt and local PC webcam gestures
+bricks:
+  - arduino:web_ui

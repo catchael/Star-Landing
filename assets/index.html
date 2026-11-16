@@ -1,0 +1,203 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+  <meta name="theme-color" content="#07111f">
+  <title>Star Landing 控制器</title>
+  <style>
+    :root { color-scheme: dark; font-family: system-ui, sans-serif; }
+    * { box-sizing: border-box; }
+    body { margin: 0; min-height: 100vh; background: radial-gradient(ellipse at top,#15324b,#07111f 65%); color: #e9f5ff; display:grid; place-items:center; padding:20px; }
+    main { width:min(440px,100%); text-align:center; }
+    h1 { font-size:1.4rem; letter-spacing:.12em; margin:0 0 8px; }
+    p { color:#a9c1d5; }
+    .status { margin:10px auto; padding:10px; border:1px solid #31536d; border-radius:12px; color:#ffd36c; }
+    .status.online { color:#75f0b5; border-color:#277a60; }
+    .status.error { color:#ff9e9e; border-color:#9a4b58; }
+    .radar { width:200px;height:200px;border:1px solid #3b7890;border-radius:50%;margin:24px auto;background:radial-gradient(circle,transparent 30%,#17374b 31%,transparent 32%,transparent 63%,#17374b 64%,transparent 65%);position:relative; }
+    .radar:before,.radar:after { content:"";position:absolute;background:#24485c; }
+    .radar:before { width:1px;height:100%;left:50%; }
+    .radar:after { height:1px;width:100%;top:50%;left:0; }
+    #ship { width:18px;height:18px;border-radius:50%;background:#70f4cd;box-shadow:0 0 18px #70f4cd;position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);transition:left .08s,top .08s;z-index:1; }
+    .buttons { display:flex;gap:14px;margin-top:26px; }
+    button { flex:1;min-height:68px;border:1px solid #4b7894;border-radius:16px;background:#122a3c;color:white;font-size:1.1rem;font-weight:700;touch-action:none; }
+    button.active { background:#267c89;box-shadow:0 0 18px #2dd9c2; }
+    #angles { font-variant-numeric:tabular-nums;color:#b6d0e2; }
+  </style>
+</head>
+<body>
+<main>
+  <h1>STAR LANDING</h1>
+  <p>傾斜手機移動飛船，按住按鈕測試控制訊號</p>
+  <div id="networkStatus" class="status">UNO Q 連線中…</div>
+  <div id="sensorStatus" class="status">感測器尚未啟動</div>
+  <div id="receipt" class="status">已收到 0 筆｜衝刺 0 次｜射擊 0 次</div>
+  <div class="radar"><div id="ship"></div></div>
+  <div id="angles">左右 0°　前後 0°</div>
+  <div class="buttons">
+    <button id="boost">⚡ 衝刺</button>
+    <button id="fire">◎ 射擊</button>
+  </div>
+  <p><button id="start" style="width:100%;min-height:48px;margin-top:18px">開始感測／校正</button></p>
+</main>
+<script>
+  const networkStatus = document.querySelector('#networkStatus');
+  const sensorStatus = document.querySelector('#sensorStatus');
+  const receipt = document.querySelector('#receipt');
+  const ship = document.querySelector('#ship');
+  const angleEl = document.querySelector('#angles');
+  const center = { beta: null, gamma: null };
+  const input = { x: 0, y: 0, boost_events: 0, fire_events: 0 };
+  const storageKey = 'star-landing-controller-v1';
+  let clientId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  let sequence = 0;
+  try {
+    const saved = JSON.parse(localStorage.getItem(storageKey) || 'null');
+    if (saved) {
+      clientId = saved.clientId || clientId;
+      sequence = Number(saved.sequence) || 0;
+      input.boost_events = Number(saved.boost_events) || 0;
+      input.fire_events = Number(saved.fire_events) || 0;
+    }
+  } catch {}
+  const pressed = { boost: false, fire: false };
+  let sending = false;
+  let pendingInput = null;
+  let activeRequest = null;
+  let retryTimer = null;
+  let retryDelay = 350;
+  let lastAckAt = 0;
+  function persistControllerState() {
+    try { localStorage.setItem(storageKey, JSON.stringify({clientId,sequence,boost_events:input.boost_events,fire_events:input.fire_events})); } catch {}
+  }
+  function setNetworkStatus(text, online=false) {
+    networkStatus.textContent = text;
+    networkStatus.classList.toggle('online', online);
+  }
+  function setSensorStatus(text, error=false) {
+    sensorStatus.textContent = text;
+    sensorStatus.classList.toggle('error', error);
+  }
+  function onOrientation(event) {
+    if (event.beta == null || event.gamma == null) {
+      setSensorStatus('瀏覽器沒有提供感測資料；請確認感測器權限與 HTTPS 設定', true);
+      return;
+    }
+    if (center.beta === null) { center.beta = event.beta; center.gamma = event.gamma; }
+    input.x = Math.max(-1, Math.min(1, (event.gamma - center.gamma) / 25));
+    input.y = Math.max(-1, Math.min(1, (event.beta - center.beta) / 25));
+    ship.style.left = `${50 + input.x * 38}%`;
+    ship.style.top = `${50 + input.y * 38}%`;
+    angleEl.textContent = `左右 ${Math.round(event.gamma-center.gamma)}°　前後 ${Math.round(event.beta-center.beta)}°`;
+    setSensorStatus('感測器正常讀取中', false);
+  }
+  async function startSensors() {
+    try {
+      if (sensorsStarted) {
+        center.beta = center.gamma = null;
+        setSensorStatus('已重新校正，請平放手機…');
+        sendInput();
+        return;
+      }
+      if (typeof DeviceOrientationEvent === 'undefined') throw new Error('此瀏覽器沒有方向感測器 API');
+      if (!window.isSecureContext) throw new Error('Chrome 封鎖了 HTTP 網頁的感測器；請設定測試來源或改用 HTTPS');
+      if (typeof DeviceOrientationEvent.requestPermission === 'function') {
+        const permission = await DeviceOrientationEvent.requestPermission();
+        if (permission !== 'granted') throw new Error('感測器權限未允許');
+      }
+      sensorsStarted = true;
+      window.addEventListener('deviceorientation', onOrientation);
+      center.beta = center.gamma = null;
+      setSensorStatus('已啟動，等待手機感測資料…');
+      setTimeout(() => {
+        if (center.beta === null) setSensorStatus('尚未收到感測資料；請確認瀏覽器權限與安全來源', true);
+      }, 2000);
+    } catch (error) { setSensorStatus(error.message, true); }
+  }
+  document.querySelector('#start').addEventListener('click', startSensors);
+  let sensorsStarted = false;
+  for (const name of ['boost','fire']) {
+    const button = document.querySelector(`#${name}`);
+    const down = event => {
+      event.preventDefault();
+      if (!pressed[name]) {
+        pressed[name] = true;
+        input[`${name}_events`] += 1;
+        button.classList.add('active');
+        sendInput();
+      }
+    };
+    const up = () => {
+      if (pressed[name]) { pressed[name] = false; button.classList.remove('active'); sendInput(); }
+    };
+    button.addEventListener('pointerdown', down);
+    button.addEventListener('pointerup', up);
+    button.addEventListener('pointercancel', up);
+    button.addEventListener('pointerleave', up);
+  }
+  function sendInput() {
+    pendingInput = { ...input, client_id: clientId, seq: ++sequence };
+    persistControllerState();
+    flushInput();
+  }
+  function scheduleRetry(delay) {
+    if (retryTimer) clearTimeout(retryTimer);
+    retryTimer = setTimeout(() => { retryTimer = null; flushInput(); }, delay);
+  }
+  async function flushInput() {
+    if (sending || !pendingInput || document.hidden) return;
+    sending = true;
+    const packet = pendingInput;
+    pendingInput = null;
+    activeRequest = new AbortController();
+    const timeout = setTimeout(() => activeRequest?.abort(), 2500);
+    try {
+      const response = await fetch('/input', {
+        method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(packet), signal:activeRequest.signal
+      });
+      if (!response.ok) throw new Error('server');
+      const ack = await response.json();
+      lastAckAt = Date.now();
+      retryDelay = 350;
+      setNetworkStatus('已收到 UNO Q 回覆', true);
+      receipt.textContent = `已收到 ${ack.received} 筆｜衝刺 ${ack.boost_presses} 次｜射擊 ${ack.fire_presses} 次`;
+    } catch {
+      pendingInput = { ...input, client_id: clientId, seq: ++sequence };
+      persistControllerState();
+      setNetworkStatus(document.hidden ? '頁面切到背景，返回時自動重連' : 'UNO Q 回覆延遲，正在重試…');
+      scheduleRetry(retryDelay);
+      retryDelay = Math.min(2500, retryDelay * 2);
+    } finally {
+      clearTimeout(timeout);
+      activeRequest = null;
+      sending = false;
+    }
+    if (pendingInput && !retryTimer && !document.hidden) flushInput();
+  }
+  setInterval(() => {
+    sendInput();
+    if (!document.hidden && lastAckAt && Date.now() - lastAckAt > 1800 && !sending)
+      setNetworkStatus('UNO Q 暫時沒有回覆，正在重連…');
+  }, 150);
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      setSensorStatus('手機頁面在背景中；返回時會重新校正', false);
+      activeRequest?.abort();
+      return;
+    }
+    center.beta = center.gamma = null;
+    input.x = input.y = 0;
+    for (const name of ['boost','fire']) {
+      pressed[name] = false;
+      document.querySelector(`#${name}`).classList.remove('active');
+    }
+    setSensorStatus(sensorsStarted ? '返回中，平放手機重新校正…' : '感測器尚未啟動', false);
+    if (retryTimer) { clearTimeout(retryTimer); retryTimer = null; }
+    retryDelay = 350;
+    sendInput();
+  });
+</script>
+</body>
+</html>

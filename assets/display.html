@@ -1,0 +1,795 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#070511">
+  <title>Star Landing｜第一視角太空飛行</title>
+  <link rel="icon" href="data:,">
+  <style>
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#05040d;color:#eff5ff;font:15px system-ui,sans-serif}
+    body{background:radial-gradient(ellipse at 74% 46%,rgba(0,125,128,.2),transparent 35%),radial-gradient(ellipse at 25% 31%,rgba(89,24,116,.21),transparent 38%),#05040d}
+    #game{position:fixed;inset:0}canvas{display:block;width:100%;height:100%}
+    #nebula{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(ellipse at 69% 39%,rgba(12,178,153,.1),transparent 26%),radial-gradient(ellipse at 26% 65%,rgba(103,22,130,.13),transparent 32%);mix-blend-mode:screen}
+    #boostBlur{position:fixed;inset:-3px;z-index:2;pointer-events:none;opacity:0;transition:opacity .1s,backdrop-filter .1s;background:radial-gradient(ellipse at center,transparent 34%,rgba(12,11,29,.3) 100%);backdrop-filter:blur(0)}
+    #boostBlur.active{opacity:.78;backdrop-filter:blur(1.7px)}
+    #impactFlash{position:fixed;inset:0;z-index:2;pointer-events:none;opacity:0;background:radial-gradient(ellipse at center,transparent 25%,rgba(255,38,86,.72) 100%);transition:opacity .08s}#impactFlash.active{opacity:1}
+    .hud{position:fixed;inset:0;z-index:3;pointer-events:none;padding:20px 28px;display:flex;justify-content:space-between;align-items:flex-start;text-shadow:0 2px 9px #000}
+    .panel{background:rgba(8,8,23,.64);border:1px solid rgba(119,206,224,.35);box-shadow:0 0 18px rgba(34,218,201,.09);backdrop-filter:blur(5px);border-radius:12px;padding:12px 16px;min-width:230px}
+    .title{font-size:.78rem;letter-spacing:.18em;color:#7af7e4;font-weight:800}.objective{font-size:.72rem;color:#c7deed;margin-top:8px;letter-spacing:.06em}
+    .meter{margin-top:7px}.meterhead{display:flex;justify-content:space-between;color:#b7d1df;font-size:.68rem;letter-spacing:.09em}.bar{height:6px;border-radius:5px;background:#283244;margin-top:4px;overflow:hidden}.bar i{height:100%;display:block;width:100%;background:linear-gradient(90deg,#59f2d3,#a3fd83);transition:width .15s}.bar.approach i{background:linear-gradient(90deg,#40d9ff,#b26aff)}
+    .right{display:flex;gap:12px;align-items:flex-start}.stat{min-width:110px;text-align:right}.statlabel{font-size:.67rem;letter-spacing:.13em;color:#b9c8d5}.statvalue{font:clamp(1.5rem,3vw,2.4rem) ui-monospace,monospace;color:#ef55d8;text-shadow:0 0 15px rgba(239,85,216,.42);font-variant-numeric:tabular-nums}.stat.small .statvalue{font-size:1.3rem;color:#e8f2ff}.hull{letter-spacing:.1em;color:#f2a8ff;font-size:1.1rem;margin-top:5px}
+    #message{position:fixed;left:50%;top:16%;transform:translateX(-50%);z-index:4;pointer-events:none;text-align:center;padding:10px 18px;border:1px solid rgba(105,195,220,.25);border-radius:12px;background:rgba(7,7,20,.42);opacity:0;transition:opacity .2s;max-width:min(90vw,600px)}#message.show{opacity:1}
+    .msgtitle{font-size:clamp(1.1rem,2.4vw,1.7rem);font-weight:800;letter-spacing:.09em}.msgsub{font-size:.82rem;color:#bfd5e0;margin-top:4px}
+    .dashStatus .connection{display:block;margin-top:7px;color:#bd9cff;font-size:.65rem;letter-spacing:.04em}.dashStatus .connection:before{content:"";display:inline-block;width:6px;height:6px;border-radius:50%;background:#ffc86b;margin-right:7px;box-shadow:0 0 8px currentColor}.dashStatus .connection.online:before{background:#62f3bb}
+    #reset{position:fixed;bottom:13px;right:18px;z-index:5;pointer-events:auto;border:1px solid rgba(123,211,226,.5);border-radius:9px;padding:8px 13px;color:#e5f5ff;background:rgba(8,18,33,.78);font:inherit;cursor:pointer;opacity:0;transition:opacity .2s}#reset.show{opacity:1}
+    #cockpitDash{position:fixed;z-index:3;left:0;right:0;bottom:0;height:clamp(142px,20vh,220px);padding:22px clamp(18px,5vw,80px) 12px;display:grid;grid-template-columns:1fr 1.3fr 1fr;align-items:center;gap:clamp(10px,3vw,48px);background:linear-gradient(180deg,rgba(8,17,33,.16),rgba(5,9,20,.92) 20%,rgba(7,12,25,.97));border-top:1px solid rgba(99,224,232,.22);box-shadow:0 -22px 55px rgba(2,7,18,.42);pointer-events:none}
+    #cockpitDash:before{content:"";position:absolute;left:0;right:0;top:0;height:3px;background:linear-gradient(90deg,transparent,#35d8d2 20%,#925fff 50%,#35d8d2 80%,transparent);opacity:.65}
+    .dashGroup{display:flex;align-items:center;gap:clamp(12px,2vw,32px);min-width:0}.dashGauge{min-width:95px;flex:1}.dashLabel{font-size:.59rem;letter-spacing:.18em;color:#8eaabd}.dashValue{font:1.15rem ui-monospace,monospace;color:#dff9ff;margin-top:5px}.dashLine{height:4px;background:#16283b;border-radius:4px;margin-top:6px;overflow:hidden}.dashLine i{display:block;height:100%;width:40%;background:linear-gradient(90deg,#43d5e7,#9d7aff);box-shadow:0 0 10px #55e9ff;transition:width .18s}.dashHull{color:#ff83d2;letter-spacing:.18em;font-size:1rem;margin-top:6px}.dashCenter{display:flex;align-items:center;justify-content:center;gap:clamp(18px,4vw,60px)}
+    .stickAssembly{width:92px;height:120px;position:relative;display:grid;place-items:center;flex:0 0 92px;perspective:220px}.stickBase{position:absolute;bottom:5px;width:80px;height:36px;border:1px solid rgba(126,203,220,.42);border-radius:50%;background:radial-gradient(ellipse,rgba(44,85,113,.55),rgba(7,15,29,.96));box-shadow:0 0 20px rgba(43,204,226,.12)}.stickRod{position:absolute;width:8px;height:59px;left:42px;top:31px;border-radius:8px;background:linear-gradient(90deg,#25364d,#a1c4da 45%,#29364c);transform-origin:50% 88%;transform-style:preserve-3d;transition:transform .16s}.stickKnob{position:absolute;left:28px;top:17px;width:36px;height:31px;border:1px solid #91e9f3;border-radius:12px 12px 9px 9px;background:linear-gradient(140deg,#4c738e,#17293e 60%,#7b5cbe);box-shadow:0 0 14px rgba(76,223,231,.28);transition:transform .16s}.stickKnob:after{content:"";position:absolute;inset:5px 8px auto;height:3px;border-radius:4px;background:#8cf5ee}.stickLabel{text-align:center;font-size:.57rem;letter-spacing:.14em;color:#809bad;margin-top:99px;white-space:nowrap}
+    .dashStatus{text-align:right;min-width:0}.dashStatus strong{display:block;color:#8ef8e8;font-size:.72rem;letter-spacing:.13em}.dashStatus span{display:block;color:#92aabc;font-size:.68rem;margin-top:6px;line-height:1.4}.dashStatus .connection{color:#bd9cff}
+    #cameraMonitor{position:fixed;z-index:4;right:clamp(15px,3vw,42px);top:23%;width:clamp(220px,22vw,340px);padding:9px;border:1px solid rgba(112,229,236,.64);clip-path:polygon(0 0,93% 0,100% 10%,100% 100%,7% 100%,0 90%);background:linear-gradient(145deg,rgba(18,37,58,.88),rgba(7,13,28,.87));box-shadow:0 0 28px rgba(55,220,226,.22);transform:perspective(850px) rotateY(-13deg) rotateZ(1deg);transform-origin:right center;pointer-events:auto;backdrop-filter:blur(7px)}
+    .monitorHead{display:flex;align-items:center;justify-content:space-between;padding:3px 7px 7px;color:#9eecf2;font-size:.59rem;letter-spacing:.15em}.monitorState{color:#73ffca;font-size:.56rem}.monitorScreen{position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;border:1px solid rgba(93,201,219,.34);background:radial-gradient(ellipse,#173144,#050916 80%)}#cameraFeed{display:block;width:100%;height:100%;object-fit:cover;opacity:.82;transform:scaleX(-1)}.monitorScan{position:absolute;inset:0;background:repeating-linear-gradient(0deg,transparent 0 5px,rgba(113,230,255,.045) 6px 7px);pointer-events:none}.monitorText{position:absolute;left:8px;right:8px;bottom:10px;padding:6px 8px;background:rgba(5,12,25,.72);color:#d7f4f7;font-size:.65rem;line-height:1.35;border-left:2px solid #76ebdf}.monitorCount{position:absolute;inset:0;display:grid;place-items:center;color:#efffff;font:700 clamp(2rem,5vw,3.3rem) ui-monospace,monospace;text-shadow:0 0 22px #62dff5;background:rgba(4,9,20,.24);opacity:0;transition:opacity .15s}.monitorCount.show{opacity:1}.monitorProgress{position:absolute;left:8px;right:8px;bottom:5px;height:2px;background:#324151}.monitorProgress i{display:block;height:100%;width:0;background:#78ffe4;box-shadow:0 0 8px #78ffe4;transition:width .15s}.monitorFoot{display:flex;justify-content:space-between;padding:6px 7px 1px;color:#829aad;font: .55rem ui-monospace,monospace}.monitorFoot b{color:#9cffe6;font-weight:600}#cameraStart{position:absolute;z-index:2;inset:0;margin:auto;width:max-content;height:max-content;padding:10px 15px;border:1px solid #83f3e4;border-radius:8px;background:#071522;color:#cffff8;cursor:pointer}#cameraStart[hidden]{display:none}
+    #message{z-index:6}
+    .poseGuide{display:none}
+    #cameraMonitor.calibrating{inset:0;z-index:10;width:auto;display:grid;grid-template-rows:auto minmax(0,1fr) auto;padding:0;border:0;clip-path:none;transform:none;background:#050914;backdrop-filter:none}
+    .calibrating .monitorHead,.calibrating .monitorFoot{padding:12px clamp(14px,3vw,40px);font-size:clamp(.72rem,1.4vw,1rem)}
+    .calibrating .monitorState{font-size:inherit}
+    .calibrating .monitorScreen{height:100%;aspect-ratio:auto;border-inline:0}
+    .calibrating #cameraFeed{object-fit:contain;opacity:1}
+    .calibrating .monitorScan{display:none}
+    .calibrating .monitorText{z-index:2;left:50%;right:auto;bottom:clamp(16px,3vh,40px);width:min(90%,720px);transform:translateX(-50%);padding:10px 16px;font-size:clamp(.85rem,2vw,1.12rem);text-align:center;background:rgba(5,12,25,.86)}
+    .calibrating .monitorCount{font-size:clamp(3rem,10vh,8rem);color:rgba(239,255,255,.85);background:transparent;pointer-events:none}
+    .calibrating .monitorProgress{left:5%;right:5%;bottom:6px;height:3px}
+    .calibrating .poseGuide{display:flex;position:absolute;z-index:2;top:clamp(8px,2vh,20px);left:50%;transform:translateX(-50%);align-items:center;flex-direction:column;max-width:90%;padding:6px 18px;color:#c9fff6;background:rgba(5,12,25,.72);border:1px solid #71d5da66;border-radius:12px;text-align:center;pointer-events:none}
+    .poseGuide strong{font-size:clamp(.85rem,2vw,1.2rem)}
+    .poseGuide svg{display:block;width:min(44vw,230px);height:clamp(48px,16vh,135px)}
+    #defaultTilt{position:absolute;z-index:3;right:clamp(12px,3vw,36px);bottom:clamp(85px,14vh,120px);padding:9px 14px;border:1px solid #83f3e4;border-radius:8px;background:#071522;color:#cffff8;cursor:pointer}
+    #reverseSteering{padding:2px 5px;border:1px solid #71d5da66;border-radius:4px;background:#071522;color:#cffff8;font:inherit;cursor:pointer}
+    @media(max-width:640px){.hud{padding:12px}.panel{min-width:180px;padding:9px 11px}.right{gap:5px}.stat{min-width:75px}.statvalue{font-size:1.55rem}.stat.small .statvalue{font-size:1rem}.objective{font-size:.62rem}.statlabel{font-size:.58rem}#message{top:19%}}
+  </style>
+</head>
+<body>
+  <div id="game"></div><div id="nebula"></div><div id="boostBlur"></div><div id="impactFlash"></div>
+  <div class="hud">
+    <div class="panel">
+      <div class="title">STAR LANDING // DEEP SPACE</div>
+      <div class="objective">MISSION 01 · 穿越隕石帶，抵達靜海空間站</div>
+    </div>
+  </div>
+  <div id="message"><div class="msgtitle" id="msgTitle"></div><div class="msgsub" id="msgSub"></div></div>
+  <aside id="cameraMonitor">
+    <button id="defaultTilt" type="button" hidden>此方向使用預設靈敏度</button>
+    <div class="monitorHead"><span id="monitorTitle">PILOT CAM // 手勢 v10</span><button id="reverseSteering" type="button" aria-pressed="false" hidden>反轉左右</button><span class="monitorState" id="monitorState">OFFLINE</span></div>
+    <div class="monitorScreen"><video id="cameraFeed" autoplay muted playsinline></video><button id="cameraStart">啟動攝影機並開始校正</button><div class="monitorScan"></div><div class="poseGuide" id="poseGuide"></div><div class="monitorText" id="monitorText">按下按鈕後，攝影機預覽和校正都會在本頁進行</div><div class="monitorCount" id="monitorCount"></div><div class="monitorProgress"><i id="monitorProgressBar"></i></div></div>
+    <div class="monitorFoot"><span id="leftHandState">LEFT HAND · —</span><b id="monitorStep">STANDBY</b><span id="rightHandState">RIGHT HAND · —</span></div>
+  </aside>
+  <section id="cockpitDash">
+    <div class="dashGroup">
+      <div class="dashGauge"><div class="dashLabel">ENERGY</div><div class="dashValue" id="energyText">100%</div><div class="dashLine"><i id="energyBar"></i></div></div>
+      <div class="dashGauge"><div class="dashLabel">APPROACH</div><div class="dashValue" id="distanceText">0%</div><div class="dashLine"><i id="distanceBar"></i></div></div>
+    </div>
+    <div class="dashCenter">
+      <div class="dashGauge"><div class="dashLabel">HULL</div><div class="dashHull" id="hullDash">◆ ◆ ◆</div></div>
+      <div class="stickAssembly"><div class="stickBase"></div><div class="stickRod" id="stickRod"></div><div class="stickKnob" id="stickKnob"></div><div class="stickLabel">FLIGHT CONTROL</div></div>
+      <div class="dashGauge"><div class="dashLabel">MISSION TIME</div><div class="dashValue" id="timeDash">00:00</div><div class="dashLabel" style="margin-top:9px">SCORE <b id="scoreDash" style="color:#d7f4ff;font-weight:600">0000</b></div></div>
+    </div>
+    <div class="dashStatus"><strong id="dashMode">GESTURE LINK // STANDBY</strong><span id="dashHint">按右側螢幕開始攝影機校正</span><span class="connection" id="connection">等待遊戲連線</span></div>
+  </section>
+  <button id="reset">重新開始任務</button>
+<script>
+  window.starGestureReady=false;
+  window.addEventListener('load',()=>setTimeout(()=>{
+    if(!document.querySelector('#game canvas')){const m=document.querySelector('#message');document.querySelector('#msgTitle').textContent='3D 畫面載入失敗';document.querySelector('#msgSub').textContent='請確認 App Lab 的 vendor 檔案都已完整上傳，再重新整理。';m.classList.add('show');}
+  },5000));
+  document.addEventListener('click',e=>{if(e.target.id==='cameraStart')setTimeout(()=>{if(!window.starGestureReady){e.target.disabled=false;e.target.textContent='手勢模組未載入，請確認檔案';document.querySelector('#monitorText').textContent='請確認 vendor/package/ 及 gesture_recognizer.task 已完整放入 App Lab 的 assets。';}},1500);},true);
+</script>
+<script type="module">
+  import * as THREE from '/vendor/three.module.js';
+  const root=document.querySelector('#game');
+  const scene=new THREE.Scene();scene.fog=new THREE.FogExp2(0x080611,.0018);
+  // Keep the station in view from mission start; it is 520 world units away.
+  const camera=new THREE.PerspectiveCamera(72,innerWidth/innerHeight,.1,900);
+  camera.rotation.order='YXZ';camera.position.set(0,0,0);
+  const renderer=new THREE.WebGLRenderer({alpha:true,antialias:true,powerPreference:'high-performance'});
+  renderer.setPixelRatio(Math.min(devicePixelRatio,1.65));renderer.setSize(innerWidth,innerHeight);renderer.outputColorSpace=THREE.SRGBColorSpace;root.appendChild(renderer.domElement);
+  scene.add(new THREE.HemisphereLight(0xb9d4ff,0x251334,2.2));
+  const keyLight=new THREE.DirectionalLight(0xb8cfff,1.5);keyLight.position.set(-8,10,12);scene.add(keyLight);
+  const cyanLight=new THREE.PointLight(0x34d9ff,14,90);cyanLight.position.set(0,0,-40);scene.add(cyanLight);
+  let aspect=innerWidth/innerHeight;
+  function resize(){aspect=innerWidth/innerHeight;camera.aspect=aspect;camera.updateProjectionMatrix();renderer.setSize(innerWidth,innerHeight);}
+
+  // Place particles across the camera frustum so the field stays present at start and end.
+  function placeFieldPoint(point,minDepth=18,maxDepth=270){
+    const depth=minDepth+Math.random()*(maxDepth-minDepth),halfHeight=Math.tan(THREE.MathUtils.degToRad(camera.fov/2))*depth;
+    point.x=camera.position.x+(Math.random()-.5)*2*halfHeight*aspect*1.12;
+    point.y=camera.position.y+(Math.random()-.5)*2*halfHeight*1.12;
+    point.z=camera.position.z-depth;
+  }
+  const stars=[];const starPositions=new Float32Array(520*3),starColors=new Float32Array(520*3);
+  const palette=[0xe8e4ff,0x70e7ff,0xffd882,0xdc86ff,0xa8f6df].map(c=>new THREE.Color(c));
+  for(let i=0;i<520;i++){
+    const s={x:0,y:0,z:0,size:.3+Math.random()*1.7};placeFieldPoint(s);stars.push(s);
+    starPositions[i*3]=s.x;starPositions[i*3+1]=s.y;starPositions[i*3+2]=s.z;
+    const c=palette[Math.floor(Math.random()*palette.length)];starColors.set([c.r,c.g,c.b],i*3);
+  }
+  const starGeometry=new THREE.BufferGeometry();starGeometry.setAttribute('position',new THREE.BufferAttribute(starPositions,3));starGeometry.setAttribute('color',new THREE.BufferAttribute(starColors,3));
+  const starField=new THREE.Points(starGeometry,new THREE.PointsMaterial({color:0xffffff,vertexColors:true,size:.78,sizeAttenuation:true,transparent:true,opacity:.86}));scene.add(starField);
+  const streaks=Array.from({length:100},()=>{const s={x:0,y:0,z:0,len:1.5+Math.random()*2.5,speed:8+Math.random()*18};placeFieldPoint(s,18,220);return s;});
+  const streakPositions=new Float32Array(streaks.length*6),streakGeometry=new THREE.BufferGeometry();streakGeometry.setAttribute('position',new THREE.BufferAttribute(streakPositions,3));
+  const streakField=new THREE.LineSegments(streakGeometry,new THREE.LineBasicMaterial({color:0x9ecaff,transparent:true,opacity:.68}));scene.add(streakField);
+
+  // Distant space station, growing naturally in perspective as the mission advances.
+  const station=new THREE.Group();scene.add(station);station.position.set(0,0,-520);
+  const stationSteel=new THREE.MeshStandardMaterial({color:0x8099ad,metalness:.82,roughness:.3,emissive:0x101b34});
+  const stationCore=new THREE.Mesh(new THREE.CylinderGeometry(3.2,4.1,12,12),stationSteel);stationCore.rotation.x=Math.PI/2;station.add(stationCore);
+  const stationRing=new THREE.Mesh(new THREE.TorusGeometry(8,.38,12,72),new THREE.MeshStandardMaterial({color:0x56f1dc,emissive:0x158b83,emissiveIntensity:1.4,metalness:.62,roughness:.22}));station.add(stationRing);
+  const stationRing2=new THREE.Mesh(new THREE.TorusGeometry(5.4,.18,10,64),new THREE.MeshStandardMaterial({color:0x79cfff,emissive:0x1a5b8b,emissiveIntensity:1.2}));stationRing2.rotation.x=.26;stationRing2.rotation.y=.2;station.add(stationRing2);
+  for(const side of [-1,1]){
+    const module=new THREE.Mesh(new THREE.BoxGeometry(4.2,3.1,8),stationSteel);module.position.set(side*8,0,-1);station.add(module);
+    const solar=new THREE.Mesh(new THREE.BoxGeometry(1.1,14,.28),new THREE.MeshStandardMaterial({color:0x245782,metalness:.42,roughness:.3,emissive:0x0b1d39}));solar.position.set(side*12,0,-1);station.add(solar);
+  }
+  for(let i=0;i<12;i++){const beacon=new THREE.Mesh(new THREE.SphereGeometry(.32,8,8),new THREE.MeshBasicMaterial({color:0x79ffe6}));const a=i*Math.PI/6;beacon.position.set(Math.cos(a)*8,Math.sin(a)*8,0);station.add(beacon);}
+
+  // Cockpit rim gives a first-person viewpoint without placing a ship sprite over the scene.
+  const cockpit=new THREE.Group();camera.add(cockpit);scene.add(camera);
+  const cockpitMat=new THREE.MeshStandardMaterial({color:0x222538,metalness:.78,roughness:.28,emissive:0x130d24});
+  const cockpitEdge=new THREE.LineBasicMaterial({color:0xb08cd4,transparent:true,opacity:.66});
+  const frameGeo=new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(-5,-3.8,-7),new THREE.Vector3(-3.5,-2.55,-7),new THREE.Vector3(-1.15,-2.1,-7),new THREE.Vector3(0,-2.45,-7),new THREE.Vector3(1.15,-2.1,-7),new THREE.Vector3(3.5,-2.55,-7),new THREE.Vector3(5,-3.8,-7)]);
+  cockpit.add(new THREE.Line(frameGeo,cockpitEdge));
+  for(const side of [-1,1]){
+    const fin=new THREE.Mesh(new THREE.BoxGeometry(1.05,.16,4.5),cockpitMat);fin.position.set(side*3.3,-3.1,-7);fin.rotation.z=side*.14;cockpit.add(fin);
+    const finEdge=new THREE.LineSegments(new THREE.EdgesGeometry(fin.geometry),cockpitEdge);finEdge.position.copy(fin.position);finEdge.rotation.copy(fin.rotation);cockpit.add(finEdge);
+    const lamp=new THREE.PointLight(side<0?0xbf58ff:0x39eaff,3,8);lamp.position.set(side*3,-2.9,-5);cockpit.add(lamp);
+  }
+  const noseLine=new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0,-2.7,-7),new THREE.Vector3(0,-1.9,-7)]),new THREE.LineBasicMaterial({color:0x9cf7ff,transparent:true,opacity:.5}));cockpit.add(noseLine);
+
+  let state={x:0,y:0,energy:100,distance:0,status:'flying',boost:false,connected:false,hull:3,score:0,fire_presses:0,calibration:{phase:'flight'}};
+  let initializedState=false,lastFireCount=0,missionSeconds=0,lastFrame=performance.now(),spawnTimer=.4,eventSeq=0,impactUntil=0;
+  let lastStateAt=0,statePolling=false;
+  const meteors=[],shots=[],explosions=[];const rand=(a,b)=>a+Math.random()*(b-a);
+  const pilotVelocity=new THREE.Vector3(),pilotRight=new THREE.Vector3(),pilotUp=new THREE.Vector3(),pilotForward=new THREE.Vector3();
+  function makeAsteroid(radius,fast=false){
+    const group=new THREE.Group();
+    const geometry=new THREE.IcosahedronGeometry(radius,1),p=geometry.attributes.position;
+    for(let i=0;i<p.count;i++){const x=p.getX(i),y=p.getY(i),z=p.getZ(i),len=Math.sqrt(x*x+y*y+z*z)||1,w=.82+Math.random()*.36;p.setXYZ(i,x/len*radius*w,y/len*radius*w,z/len*radius*w);}
+    geometry.computeVertexNormals();
+    const rock=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({color:0x11101c,metalness:.18,roughness:.98,emissive:0x090817}));group.add(rock);
+    const outline=new THREE.LineSegments(new THREE.EdgesGeometry(geometry),new THREE.LineBasicMaterial({color:fast?0xffb46b:0xe0deed,transparent:true,opacity:.95}));group.add(outline);
+    const craterN=2+Math.floor(Math.random()*4);
+    for(let i=0;i<craterN;i++){
+      const cr=radius*rand(.12,.28),cx=rand(-radius*.4,radius*.4),cy=rand(-radius*.4,radius*.4);
+      const pts=new THREE.EllipseCurve(cx,cy,cr*rand(.7,1.2),cr*rand(.65,1),0,Math.PI*2,false,0).getPoints(22);
+      const cg=new THREE.BufferGeometry().setFromPoints(pts.map(v=>new THREE.Vector3(v.x,v.y,radius*1.015)));
+      group.add(new THREE.LineLoop(cg,new THREE.LineBasicMaterial({color:0xf0edf8,transparent:true,opacity:.82})));
+    }
+    group.userData.radius=radius;return group;
+  }
+  function spawnMeteor(){
+    camera.updateMatrixWorld(true);
+    const large=Math.random()<.4,fast=Math.random()<.42,radius=large?rand(4.5,7.8):rand(1.4,3.2),group=makeAsteroid(radius,fast);
+    camera.getWorldDirection(pilotForward);
+    pilotRight.set(1,0,0).applyQuaternion(camera.quaternion).normalize();
+    pilotUp.set(0,1,0).applyQuaternion(camera.quaternion).normalize();
+    const depth=rand(65,135),nearLane=Math.random()<.68;
+    const offsetX=nearLane?rand(-8,8):rand(-22,22),offsetY=nearLane?rand(-5,5):rand(-13,13);
+    group.position.copy(camera.position).addScaledVector(pilotForward,depth).addScaledVector(pilotRight,offsetX).addScaledVector(pilotUp,offsetY);
+    group.rotation.set(rand(-1,1),rand(-1,1),rand(0,Math.PI*2));scene.add(group);
+    const velocity=new THREE.Vector3(rand(-.06,.06),rand(-.04,.04),1).normalize();
+    meteors.push({group,radius,velocity,speed:fast?rand(32,48):rand(.7,2),fast,spinX:rand(-.24,.24),spinY:rand(-.3,.3),spinZ:rand(-.4,.4)});
+  }
+  function disposeGroup(group){group.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material){if(Array.isArray(o.material))o.material.forEach(m=>m.dispose());else o.material.dispose();}});scene.remove(group);}
+  function makeExplosion(pos){
+    const n=34,coords=new Float32Array(n*3),vel=[];
+    for(let i=0;i<n;i++){const a=Math.random()*Math.PI*2,v=rand(-1,1),r=Math.sqrt(1-v*v),s=rand(2,9);coords[i*3]=coords[i*3+1]=coords[i*3+2]=0;vel.push([Math.cos(a)*r*s,Math.sin(a)*r*s,v*s]);}
+    const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.BufferAttribute(coords,3));
+    const points=new THREE.Points(geo,new THREE.PointsMaterial({color:Math.random()>.5?0xffb9f6:0x8cf9ff,size:.22,transparent:true,opacity:1}));points.position.copy(pos);scene.add(points);explosions.push({points,vel,life:0});
+  }
+  async function sendGameEvent(type){const event_id=`${Date.now()}-${++eventSeq}`;try{await fetch('/event',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({event_id,type})});}catch{}}
+  function removeMeteor(i,scoreIt){const m=meteors[i];if(!m)return;makeExplosion(m.group.position);disposeGroup(m.group);meteors.splice(i,1);if(scoreIt)sendGameEvent('meteor_destroyed');}
+  function fireLaser(){
+    camera.updateMatrixWorld(true);
+    let best=null,bestDepth=-Infinity;
+    for(const m of meteors){const local=camera.worldToLocal(m.group.position.clone());const hitRadius=m.radius+2.2;if(local.z<-.8&&local.z> -115&&Math.hypot(local.x,local.y)<hitRadius&&local.z>bestDepth){best=m;bestDepth=local.z;}}
+    const start=new THREE.Vector3(0,-2.65,-6.9),end=new THREE.Vector3(0,0,best?bestDepth:-58),beam=new THREE.Group();
+    for(const [radius,color,opacity] of [[.78,0xff45de,.26],[.38,0xff9cf2,.78],[.17,0xffffff,1]]){
+      const curve=new THREE.LineCurve3(start,end),mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,12,radius,8,false),new THREE.MeshBasicMaterial({color,transparent:true,opacity,blending:THREE.AdditiveBlending,depthWrite:false}));beam.add(mesh);
+    }
+    const muzzle=new THREE.Mesh(new THREE.SphereGeometry(.62,12,12),new THREE.MeshBasicMaterial({color:0xffc6fb,transparent:true,opacity:1,blending:THREE.AdditiveBlending}));muzzle.position.copy(start);beam.add(muzzle);
+    camera.add(beam);shots.push({beam,life:0});
+    if(best){const index=meteors.indexOf(best);if(index>=0)removeMeteor(index,true);}
+  }
+  async function pullState(){
+    if(statePolling)return;
+    statePolling=true;const controller=new AbortController(),timeout=setTimeout(()=>controller.abort(),2200);
+    try{const r=await fetch('/state',{cache:'no-store',signal:controller.signal});if(!r.ok)throw new Error('state');const next=await r.json();lastStateAt=performance.now();
+      if(!initializedState){lastFireCount=next.fire_presses||0;initializedState=true;}
+      else{const n=Math.max(0,(next.fire_presses||0)-lastFireCount);for(let i=0;i<Math.min(n,5);i++)fireLaser();lastFireCount=next.fire_presses||0;}
+      state=next;
+    }catch{}finally{clearTimeout(timeout);statePolling=false;}
+  }
+  setInterval(pullState,90);
+  document.querySelector('#reset').addEventListener('click',async()=>{
+    await fetch('/reset',{method:'POST'});missionSeconds=0;spawnTimer=.25;impactUntil=0;camera.position.set(0,0,0);camera.rotation.set(0,0,0);pilotVelocity.set(0,0,0);
+    for(let i=meteors.length-1;i>=0;i--)removeMeteor(i,false);
+    for(const s of shots){camera.remove(s.beam);s.beam.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});}shots.length=0;
+    for(const e of explosions){scene.remove(e.points);e.points.geometry.dispose();e.points.material.dispose();}explosions.length=0;
+    camera.position.z=0;await pullState();
+  });
+  const steps=[
+    ['持平飛行','雙拳放在胸前同一高度，拇指自然搭在拳頭外側'],
+    ['向右','像轉方向盤一樣，右拳降低、左拳抬高'],
+    ['向左','像轉方向盤一樣，左拳降低、右拳抬高'],
+    ['上升','保持雙拳持平，一起舉高'],
+    ['下降','保持雙拳持平，一起降低'],
+    ['射擊','右手比讚，左手拇指自然搭在拳頭上'],
+    ['衝刺','左手比讚，右手拇指自然搭在拳頭上'],
+  ];
+  const prepareSeconds=5,recordSeconds=5,takeoffSeconds=5;
+  const radians=Math.PI/180,levelAngle=20*radians,rollDead=5*radians,heightDead=.008;
+  const ranges={right:0,left:0,up:0,down:0};
+  const median=values=>[...values].sort((a,b)=>a-b)[Math.floor(values.length/2)];
+  const angleDelta=(a,b)=>Math.atan2(Math.sin(a-b),Math.cos(a-b));
+  const gestureClientId=`browser-gesture-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+  let gestureOn=false,handTracker=null,calPhase='ready',calStage=0,calStart=0;
+  let neutralRoll=0,neutralLeft=.5,neutralRight=.5,samples=[],recordedMs=0,previousPoseFrame=0,lastVideoTime=-1,lastCalUi=0;
+  let controlSeq=0,boostEvents=0,fireEvents=0,lastGesturePost=0,inputPending=false;
+  let flightX=0,flightY=0,lastFlightFrame=0,lastAction='',lastActionAt=0;
+  let previousHandPair=null,lastGripAt=-Infinity;
+  const thumbProfiles={
+    left:{rest:null,restHigh:0,restSamples:[],levels:null},
+    right:{rest:null,restHigh:0,restSamples:[],levels:null},
+  };
+  let takeoffDeadline=0,launchPending=false,nextLaunchAttempt=0,launchError='';
+  const fireLatch={armed:false,since:0,releasedAt:0,frames:0};
+  const boostLatch={armed:false,since:0,releasedAt:0,frames:0};
+  const camVideo=document.querySelector('#cameraFeed');
+  const sendPreflight=async(phase,stage,title,hint,countdown=0,recording=false,progress=0,left=false,right=false)=>{
+    const response=await fetch('/preflight',{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(2500),body:JSON.stringify({phase,stage,total:steps.length,title,hint,countdown,recording,progress,left_seen:left,right_seen:right})});
+    if(!response.ok)throw new Error(`UNO Q 回應 HTTP ${response.status}`);
+    const acknowledgment=await response.json();
+    if(!acknowledgment.ok)throw new Error(acknowledgment.error||'UNO Q 未確認飛前狀態');
+  };
+  const fingerJoints=[[5,6,7,8],[9,10,11,12],[13,14,15,16],[17,18,19,20]];
+  function measureHand(points,worldPoints){
+    const joints=worldPoints?.length===21?worldPoints:points;
+    const aspect=joints===points?(camVideo.videoWidth/camVideo.videoHeight||1):1;
+    const vector=(a,b)=>[(joints[b].x-joints[a].x)*aspect,joints[b].y-joints[a].y,(joints[b].z-joints[a].z)*aspect];
+    const distance=(a,b)=>Math.hypot(...vector(a,b));
+    const curled=fingerJoints.map(([root,middle,next,tip])=>{
+      const segments=distance(root,middle)+distance(middle,next);
+      const bent=segments>0&&distance(root,next)<segments*.965;
+      return bent||distance(0,tip)<distance(0,middle)*1.05;
+    });
+    const palmLength=distance(0,9)||1;
+    const distanceToFinger=(start,end)=>{
+      const segment=vector(start,end);
+      const thumb=vector(start,4);
+      const lengthSquared=segment.reduce((sum,value)=>sum+value*value,0);
+      const fraction=lengthSquared?THREE.MathUtils.clamp(
+        thumb.reduce((sum,value,i)=>sum+value*segment[i],0)/lengthSquared,0,1,
+      ):0;
+      return Math.hypot(...thumb.map((value,i)=>value-segment[i]*fraction));
+    };
+    // Measure the gap between the thumb tip and the curled fingers in palm units.
+    const clearance=Math.min(distanceToFinger(5,6),distanceToFinger(6,7),distanceToFinger(9,10));
+    return {
+      grip:curled.filter(Boolean).length>=3,
+      opening:clearance/palmLength,
+      extended:distance(2,4)>.78*(distance(2,3)+distance(3,4)),
+    };
+  }
+  function okaySign(hand){
+    if(!hand)return false;
+    const distance=(a,b)=>Math.hypot(hand[a].x-hand[b].x,hand[a].y-hand[b].y);
+    return distance(4,8)<distance(0,9)*.35 &&
+      [[12,10],[16,14],[20,18]].every(([tip,joint])=>distance(0,tip)>distance(0,joint)*1.12);
+  }
+  const poseGuide=document.querySelector('#poseGuide');
+  const camMonitor=document.querySelector('#cameraMonitor');
+  const defaultTilt=document.querySelector('#defaultTilt');
+  const reverseSteering=document.querySelector('#reverseSteering');
+  let reverseHorizontal=false;
+  reverseSteering.addEventListener('click',()=>{
+    reverseHorizontal=!reverseHorizontal;
+    reverseSteering.setAttribute('aria-pressed',String(reverseHorizontal));
+    reverseSteering.textContent=reverseHorizontal?'恢復左右':'反轉左右';
+    flightX=0;
+  });
+  const defaultTiltAngle=18*radians;
+  let tiltNote='';
+  defaultTilt.addEventListener('click',()=>{
+    if(!['record','reviewTilt'].includes(calPhase)||![1,2].includes(calStage))return;
+    ranges[calStage===1?'right':'left']=defaultTiltAngle;
+    tiltNote=`${steps[calStage][0]}已使用預設靈敏度。`;
+    calStage++;calPhase='ready';calStart=0;
+    defaultTilt.hidden=true;
+  });
+  const fistOutline='<rect x="-22" y="-18" width="44" height="36" rx="11"/><path d="M-11-18v14M0-18v14M11-18v14M-21 7h19q7 0 7-6"/>';
+  const thumbOutline='<path d="M-22 0h10l9-10 2-18q2-5 7-3l4 5-1 16h14q6 0 5 7l-5 22q-2 6-9 6h-36z"/><path d="M-12 0v25"/>';
+  function renderPoseGuide(stage){
+    if(Number(poseGuide.dataset.stage)===stage)return;
+    poseGuide.dataset.stage=stage;
+    const fist=(x,y,label)=>`<g transform="translate(${x} ${y})">${fistOutline}<text y="33">${label}</text></g>`;
+    const arrow=path=>`<path d="${path}" stroke="#ffd184"/>`;
+    let drawing;
+    if(stage<=5){
+      const left=stage===2?36:stage===3?66:54;
+      const right=stage===2?66:stage===3?36:54;
+      drawing=`<path d="M60 ${left}L160 ${right}" stroke-dasharray="4 6" opacity=".7"/>${fist(60,left,'左手')}${fist(160,right,'右手')}`;
+      if(stage===2) drawing+=arrow('M197 38Q207 52 196 72m0-13 0 13 13-3');
+      if(stage===3) drawing+=arrow('M23 38Q13 52 24 72m0-13 0 13-13-3');
+      if(stage===4) drawing+=arrow('M35 27V7m-6 6 6-6 6 6m144 14V7m-6 6 6-6 6 6');
+      if(stage===5) drawing+=arrow('M28 34v35m-6-6 6 6 6-6m158-29v35m-6-6 6 6 6-6');
+    }else{
+      drawing=stage===6
+        ?`<g transform="translate(110 49)">${thumbOutline}<text y="43">右手</text></g>`
+        :`<g transform="translate(110 49)"><g transform="scale(-1 1)">${thumbOutline}</g><text y="43">左手</text></g>`;
+    }
+    poseGuide.innerHTML=`<strong>${steps[stage-1][0]}</strong>
+      <svg viewBox="0 0 220 105" aria-hidden="true">
+        <style>.poseGuide text{fill:currentColor;stroke:none;text-anchor:middle;font:12px system-ui}</style>
+        <g fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round">${drawing}</g>
+      </svg>`;
+  }
+  function publishCal(phase,stage,title,hint,countdown=0,recording=false,progress=0,left=false,right=false){
+    const calibrating=stage>0;
+    camMonitor.classList.toggle('calibrating',calibrating);
+    reverseSteering.hidden=phase!=='flight';
+    defaultTilt.hidden=![2,3].includes(stage)||!['record','reviewTilt'].includes(phase);
+    if(calibrating)renderPoseGuide(stage);
+    const count=document.querySelector('#monitorCount');count.textContent=countdown>0?String(Math.ceil(countdown)):'';count.classList.toggle('show',countdown>0);
+    document.querySelector('#monitorText').textContent=hint;
+    const flightStatus={takeoff:'起飛倒數',launch:'連線確認',flight:'飛行中'};
+    document.querySelector('#monitorStep').textContent=stage?`STEP ${stage}/${steps.length}`:flightStatus[phase]||'';
+    document.querySelector('#monitorProgressBar').style.width=`${Math.round(progress*100)}%`;
+    document.querySelector('#leftHandState').textContent=`LEFT HAND · ${left?'LOCKED':'—'}`;document.querySelector('#rightHandState').textContent=`RIGHT HAND · ${right?'LOCKED':'—'}`;
+    document.querySelector('#dashMode').textContent=title;document.querySelector('#dashHint').textContent=hint;
+  }
+  async function startGesture(){
+    const button=document.querySelector('#cameraStart');
+    const hint=document.querySelector('#monitorText');
+    const status=document.querySelector('#monitorState');
+    if(!window.isSecureContext){
+      status.textContent='需要安全來源';
+      hint.textContent=`Chrome 封鎖 HTTP 網頁的攝影機。測試時請在 Chrome 的安全來源例外設定加入 ${location.origin}，重啟 Chrome 後再試。`;
+      return;
+    }
+    if(!navigator.mediaDevices?.getUserMedia){
+      hint.textContent='目前的瀏覽器環境無法存取攝影機。請在電腦 Chrome 直接開啟遊戲網址。';
+      return;
+    }
+    button.disabled=true;
+    button.textContent='正在啟動攝影機…';
+    hint.textContent='請在 Chrome 的權限提示中允許使用攝影機。';
+    status.textContent='等待攝影機';
+    let stream;
+    let stage='攝影機';
+    try{
+      stream=await navigator.mediaDevices.getUserMedia({video:{width:{ideal:640},height:{ideal:480}},audio:false});
+      camVideo.srcObject=stream;
+      await camVideo.play();
+      stage='手勢辨識';
+      button.textContent='正在載入手勢辨識…';
+      hint.textContent='攝影機已開啟，正在載入手勢模型。';
+      status.textContent='載入模型';
+      const {FilesetResolver,GestureRecognizer}=await import('/vendor/package/vision_bundle.mjs');
+      const vision=await FilesetResolver.forVisionTasks('/vendor/package/wasm');
+      handTracker=await GestureRecognizer.createFromOptions(vision,{
+        baseOptions:{modelAssetPath:'/gesture_recognizer.task',delegate:'CPU'},
+        runningMode:'VIDEO',numHands:2,cannedGesturesClassifierOptions:{scoreThreshold:.2},
+      });
+      stage='UNO Q';
+      await sendPreflight('align',1,'持平飛行','請比 OK 開始校正');
+      gestureOn=true;button.hidden=true;status.textContent='CAMERA ON';status.style.color='#73ffca';
+      calPhase='ready';calStage=0;calStart=0;lastVideoTime=-1;
+      publishCal('ready',1,'持平飛行','請比 OK 開始校正');
+      requestAnimationFrame(readGestures);
+    }catch(error){
+      stream?.getTracks().forEach(track=>track.stop());
+      camVideo.srcObject=null;
+      handTracker?.close();
+      handTracker=null;
+      console.error(`${stage}啟動失敗`,error);
+      const cameraErrors={
+        NotAllowedError:'請在 Chrome 的網站設定允許攝影機，並確認 Windows 已允許桌面應用程式使用攝影機。',
+        NotFoundError:'找不到攝影機。請確認電腦的攝影機已連接並啟用。',
+        NotReadableError:'攝影機目前無法使用。請關閉其他正在使用攝影機的程式並重試。',
+      };
+      status.textContent=`${stage}啟動失敗`;
+      hint.textContent=stage==='攝影機'
+        ? (cameraErrors[error.name] || `攝影機錯誤（${error.name}）。`)
+        : stage==='UNO Q'?'請確認 App Lab 正在執行，並已更新 python/main.py。'
+          :'攝影機已成功開啟，但手勢辨識載入失敗。請查看 Console 內的錯誤詳情。';
+      button.textContent='點此重試';
+      button.disabled=false;
+    }
+  }
+  document.querySelector('#cameraStart').addEventListener('click',startGesture);
+  window.starGestureReady=true;
+  function scaledAxis(value,dead,positive,negative){
+    const extent=value>=0?positive:negative;
+    return Math.sign(value)*THREE.MathUtils.clamp((Math.abs(value)-dead)/Math.max(extent-dead,dead*.25),0,1);
+  }
+
+  function thumbSample(hand,profile){
+    return hand?.grip&&profile.rest!==null&&
+      hand.opening>=Math.max(profile.rest+.08,profile.restHigh+.04)&&
+      (hand.extended||hand.thumb>=.55);
+  }
+
+  function thumbExamples(samples,field,maxCount=16){
+    const stride=Math.max(1,Math.ceil(samples.length/maxCount));
+    return samples.filter((_,i)=>i%stride===0).map(sample=>sample[field]);
+  }
+  function learnThumbLevels(profile,samples){
+    const raised=median(samples);
+    const span=raised-profile.rest;
+    const noise=Math.max(0,profile.restHigh-profile.rest);
+    const pressOffset=Math.min(span*.9,Math.max(span*.48,noise+.035,.065));
+    const releaseOffset=Math.min(pressOffset-.02,Math.max(span*.24,noise+.01,.02));
+    profile.levels={
+      press:profile.rest+pressOffset,
+      release:profile.rest+releaseOffset,
+      travel:Math.min(pressOffset*.8,Math.max(.04,span*.3)),
+    };
+  }
+  function thumbState(hand,profile,latch){
+    if(!hand?.grip||!profile.levels)return null;
+    const {press,release,travel}=profile.levels;
+    return {
+      opening:hand.opening,
+      pressed:hand.opening>=press&&hand.opening-(latch.restOpening??profile.rest)>=travel&&
+        (hand.extended||hand.thumb>=.55),
+      resting:hand.opening<=release,
+    };
+  }
+
+  function actionPressed(latch,pose,now){
+    if(!pose||now-(latch.lastFrame||now)>250){
+      latch.armed=false;
+      latch.since=0;
+      latch.releasedAt=0;
+      latch.frames=0;
+      latch.restOpening=null;
+    }
+    latch.lastFrame=now;
+    if(!pose)return false;
+    if(pose.resting){
+      latch.since=0;
+      latch.frames=0;
+      latch.releasedAt=latch.releasedAt||now;
+      latch.restOpening=latch.restOpening==null?pose.opening:latch.restOpening*.75+pose.opening*.25;
+      if(now-latch.releasedAt>=80)latch.armed=true;
+      return false;
+    }
+    latch.releasedAt=0;
+    if(!pose.pressed){latch.since=0;latch.frames=0;return false;}
+    latch.since=latch.since||now;
+    latch.frames++;
+    if(!latch.armed||latch.frames<3||now-latch.since<80)return false;
+    latch.armed=false;
+    return true;
+  }
+
+  function pilotHands(result){
+    const center=(hand,axis)=>[0,5,9,13,17].reduce((sum,i)=>sum+hand[i][axis],0)/5;
+    const hands=result.landmarks.map((points,index)=>{
+      const gestures=result.gestures?.[index]||[];
+      const score=name=>gestures.find(item=>item.categoryName===name)?.score||0;
+      return {points,x:1-center(points,'x'),y:center(points,'y'),thumb:score('Thumb_Up'),
+        ...measureHand(points,result.worldLandmarks?.[index])};
+    }).sort((a,b)=>a.x-b.x);
+    const [left,right]=hands;
+    if(!right||right.x-left.x<.055)return {hands};
+    if(previousHandPair){
+      const distance=(a,b)=>Math.hypot(a.x-b.x,a.y-b.y);
+      const same=distance(left,previousHandPair.left)+distance(right,previousHandPair.right);
+      const swapped=distance(right,previousHandPair.left)+distance(left,previousHandPair.right);
+      if(swapped+.045<same)return {hands};
+    }
+    previousHandPair={left,right};
+    return {hands,left,right};
+  }
+
+  function updateTakeoff(now){
+    if(calPhase==='takeoff'){
+      const remaining=Math.max(0,(takeoffDeadline-now)/1000);
+      if(remaining>0){
+        if(now-lastCalUi>=75){
+          publishCal('takeoff',0,'校正完成','雙拳回到胸前，倒數結束後起飛。',remaining,false,1-remaining/takeoffSeconds);
+          lastCalUi=now;
+        }
+        return;
+      }
+      calPhase='launch';
+    }
+    if(calPhase!=='launch'||launchPending||now<nextLaunchAttempt)return;
+
+    launchPending=true;
+    const hint=launchError?`${launchError}。正在重試起飛。`:'正在等待 UNO Q 確認起飛。';
+    publishCal('launch',0,'等待起飛確認',hint,0,false,1);
+    sendPreflight('flight',0,'飛行中','手勢校正完成').then(()=>{
+      calPhase='flight';
+      lastFlightFrame=performance.now();
+      publishCal('flight',0,'飛行中','雙拳控制方向，右手比讚射擊，左手比讚衝刺');
+    }).catch(error=>{
+      console.error('UNO Q 起飛確認失敗',error);
+      launchError=error.name==='TimeoutError'?'UNO Q 回覆逾時':error.message;
+      nextLaunchAttempt=performance.now()+1000;
+      publishCal('launch',0,'等待起飛確認',`${launchError}。稍後會自動重試。`,0,false,1);
+    }).finally(()=>{launchPending=false;});
+  }
+
+  function readGestures(now){
+    if(!gestureOn||!handTracker)return;
+    requestAnimationFrame(readGestures);
+    if(calPhase==='takeoff'||calPhase==='launch')return;
+    if(camVideo.readyState<2||camVideo.currentTime===lastVideoTime)return;
+    lastVideoTime=camVideo.currentTime;
+    const result=handTracker.recognizeForVideo(camVideo,now);
+    const {hands,left:screenLeft,right:screenRight}=pilotHands(result);
+    const L=screenLeft?.points,R=screenRight?.points;
+    const readyGesture=hands.some(hand=>okaySign(hand.points));
+    const bothVisible=!!(screenLeft&&screenRight);
+    const span=bothVisible?screenRight.x-screenLeft.x:0;
+    const roll=bothVisible?Math.atan2(screenLeft.y-screenRight.y,span*camVideo.videoWidth/camVideo.videoHeight):0;
+    const leftHeight=screenLeft?.y??neutralLeft;
+    const rightHeight=screenRight?.y??neutralRight;
+    const leftLift=neutralLeft-leftHeight,rightLift=neutralRight-rightHeight;
+    const tilt=angleDelta(roll,neutralRoll);
+    const bothFists=bothVisible&&screenLeft.grip&&screenRight.grip;
+    // In the player's view, a right turn lowers the right hand.
+    const wheelTurn=-tilt;
+    const lateral=scaledAxis(wheelTurn,rollDead,ranges.right,ranges.left);
+    const levelForLift=Math.abs(tilt)<=levelAngle;
+    const midpointLift=(leftLift+rightLift)/2;
+
+    if(calPhase==='flight'){
+      const rightPose=thumbState(screenRight,thumbProfiles.right,fireLatch);
+      const leftPose=thumbState(screenLeft,thumbProfiles.left,boostLatch);
+      const fired=actionPressed(fireLatch,rightPose,now);
+      const boosted=actionPressed(boostLatch,leftPose,now);
+      if(fired)fireEvents++;
+      if(boosted)boostEvents++;
+      if(fired||boosted){
+        lastAction=[fired?'右手射擊':'',boosted?'左手衝刺':''].filter(Boolean).join('／');
+        lastActionAt=now;
+      }
+      if(bothFists)lastGripAt=now;
+      if(!bothVisible)lastGripAt=-Infinity;
+      const steering=bothVisible&&now-lastGripAt<140;
+      const horizontal=lateral*(reverseHorizontal?-1:1);
+      const vertical=scaledAxis(midpointLift,.006,ranges.up*.7,ranges.down*.7);
+      const magnitude=Math.max(1,Math.hypot(horizontal,vertical));
+      const alpha=1-Math.exp(-Math.min(now-lastFlightFrame,100)/55);
+      lastFlightFrame=now;
+      flightX=steering?flightX+(horizontal/magnitude-flightX)*alpha:0;
+      flightY=steering?flightY+(vertical/magnitude-flightY)*alpha:0;
+      if(now-lastCalUi>120){
+        const output=(value,positive,negative)=>Math.abs(value)<.03?'—':`${value>0?positive:negative}${Math.round(Math.abs(value)*100)}%`;
+        const direction=!bothVisible?'請將雙手分開，維持在鏡像的左右兩側':!steering?'雙手其餘四指握拳以恢復方向控制'
+          :`方向 ${output(flightX,'右','左')}／${output(flightY,'上','下')}`;
+        const hint=lastAction&&now-lastActionAt<900?`${lastAction} · ${direction}`:direction;
+        publishCal('flight',0,'飛行中',hint,0,false,0,!!screenLeft,!!screenRight);
+        const handStatus=(hand,pose,latch)=>!hand?'未追蹤':pose?.pressed?'比讚':latch.armed?'就緒':'拇指搭回拳頭';
+        document.querySelector('#leftHandState').textContent=`左 · ${handStatus(screenLeft,leftPose,boostLatch)} · ${boostEvents}`;
+        document.querySelector('#rightHandState').textContent=`右 · ${handStatus(screenRight,rightPose,fireLatch)} · ${fireEvents}`;
+        lastCalUi=now;
+      }
+      if(!inputPending&&(fired||boosted||now-lastGesturePost>=50)){
+        inputPending=true;
+        lastGesturePost=now;
+        fetch('/input',{method:'POST',headers:{'Content-Type':'application/json'},signal:AbortSignal.timeout(1500),body:JSON.stringify({
+          client_id:gestureClientId,seq:++controlSeq,x:flightX,y:flightY,fire_events:fireEvents,boost_events:boostEvents,
+        })}).then(response=>{if(response.ok&&(fired||boosted))pullState();}).catch(()=>{}).finally(()=>{inputPending=false;});
+      }
+      return;
+    }
+
+    const [stepTitle,pose]=steps[calStage];
+    let title=stepTitle,hint=pose,count=0,progress=0;
+    if(calPhase==='ready'){
+      hint=tiltNote+pose+'。準備好後，比 OK 開始倒數。';
+      if(readyGesture){
+        calStart=calStart||now;
+        if(now-calStart>=450){calPhase='prepare';calStart=now;tiltNote='';}
+      }else calStart=0;
+    }else if(calPhase==='prepare'){
+      count=Math.max(0,prepareSeconds-(now-calStart)/1000);
+      hint='準備：'+pose;
+      if(count===0){calPhase='record';samples=[];recordedMs=0;previousPoseFrame=0;}
+    }else if(calPhase==='reviewTilt'){
+      hint=`${pose}。比 OK 重錄，或使用預設靈敏度。`;
+      if(readyGesture){
+        calStart=calStart||now;
+        if(now-calStart>=450){calPhase='prepare';calStart=now;}
+      }else calStart=0;
+    }else if(calPhase==='record'){
+      const tiltStage=calStage===1||calStage===2;
+      const rightExtended=thumbSample(screenRight,thumbProfiles.right);
+      const leftExtended=thumbSample(screenLeft,thumbProfiles.left);
+      const valid=[
+        bothFists&&Math.abs(roll)<=levelAngle,
+        bothVisible,
+        bothVisible,
+        bothVisible&&levelForLift&&midpointLift>=heightDead,
+        bothVisible&&levelForLift&&midpointLift<=-heightDead,
+        bothVisible&&rightExtended&&!leftExtended,
+        bothVisible&&leftExtended&&!rightExtended,
+      ][calStage];
+      const duration=calStage<5?recordSeconds:1;
+      if(samples.length&&now-samples.at(-1).time>(calStage>=3?1200:450)){
+        samples=[];recordedMs=0;previousPoseFrame=0;
+      }
+      if(!valid){
+        previousPoseFrame=0;
+        hint='等候姿勢：'+pose;
+        if(tiltStage){
+          if(!bothVisible)hint='請將雙手分開，維持在鏡像的左右兩側。';
+        }
+        if(calStage>=5)hint=bothVisible?`${pose}，讓拇指和拳面之間的位置變化看得清楚。`:'請讓兩隻手同時入鏡。';
+      }else{
+        if(previousPoseFrame)recordedMs+=Math.min(now-previousPoseFrame,120);
+        previousPoseFrame=now;
+        samples.push({time:now,roll,leftHeight,rightHeight,wheelTurn,midpointLift,
+          leftThumb:screenLeft.opening,rightThumb:screenRight.opening,
+          leftAtRest:screenLeft.grip&&screenLeft.thumb<.5,rightAtRest:screenRight.grip&&screenRight.thumb<.5});
+        hint='正在記錄：'+pose;
+        if(tiltStage)hint+=`。目前判定向${wheelTurn>=0?'右':'左'}轉 ${Math.abs(wheelTurn/radians).toFixed(1)}°。`;
+      }
+      count=Math.max(0,duration-recordedMs/1000);
+      progress=1-count/duration;
+      if(valid){
+        if(count===0){
+          if(calStage===0){
+            neutralRoll=median(samples.map(sample=>sample.roll));
+            neutralLeft=median(samples.map(sample=>sample.leftHeight));
+            neutralRight=median(samples.map(sample=>sample.rightHeight));
+            thumbProfiles.left.rest=median(samples.map(sample=>sample.leftThumb));
+            thumbProfiles.right.rest=median(samples.map(sample=>sample.rightThumb));
+          }
+          const axis=['','right','left','up','down'][calStage];
+          if(tiltStage){
+            const sign=calStage===1?1:-1;
+            const correct=samples.filter(sample=>sample.wheelTurn*sign>=rollDead+2*radians);
+            if(!correct.length||correct.at(-1).time-correct[0].time<700){
+              calPhase='reviewTilt';calStart=0;
+              publishCal(calPhase,calStage+1,title,`${pose}。比 OK 重錄，或使用預設靈敏度。`,0,false,0,!!L,!!R);
+              lastCalUi=now;
+              return;
+            }
+            ranges[axis]=median(correct.map(sample=>sample.wheelTurn*sign));
+          }else if(axis){
+            ranges[axis]=median(samples.map(sample=>Math.abs(sample.midpointLift)));
+          }
+          // Include the neutral grip seen during actual steering, not only straight flight.
+          if(calStage<5){
+            for(const side of ['left','right']){
+              const atRest=calStage===0?samples:samples.filter(sample=>sample[side+'AtRest']);
+              const profile=thumbProfiles[side];
+              profile.restSamples.push(...thumbExamples(atRest,side+'Thumb'));
+              const ordered=[...profile.restSamples].sort((a,b)=>a-b);
+              profile.restHigh=ordered[Math.floor((ordered.length-1)*.9)]??profile.rest;
+            }
+          }
+          if(calStage===5)learnThumbLevels(thumbProfiles.right,samples.map(sample=>sample.rightThumb));
+          if(calStage===6)learnThumbLevels(thumbProfiles.left,samples.map(sample=>sample.leftThumb));
+          if(calStage<steps.length-1){calStage++;calPhase='ready';calStart=0;}
+          else{
+            calPhase='takeoff';
+            takeoffDeadline=now+takeoffSeconds*1000;
+            publishCal('takeoff',0,'校正完成','雙拳回到胸前，倒數結束後起飛。',takeoffSeconds,false,0,!!L,!!R);
+            lastCalUi=now;
+            return;
+          }
+        }
+      }
+    }
+    if(now-lastCalUi>75){
+      publishCal(calPhase,calStage+1,title,hint,count,calPhase==='record',progress,!!L,!!R);
+      lastCalUi=now;
+    }
+  }
+  function flightInput(now){
+    if(!gestureOn)return [state.x||0,state.y||0];
+    if(calPhase==='flight'&&now-lastFlightFrame<200)return [flightX,flightY];
+    return [0,0];
+  }
+  function updateCockpitState(){
+    const [x,y]=flightInput(performance.now());
+    document.querySelector('#stickRod').style.transform=`rotateZ(${x*22}deg) rotateX(${y*18}deg)`;
+    document.querySelector('#stickKnob').style.transform=`translate(${x*13}px,${-y*9}px)`;
+  }
+  function updateHud(dt){
+    const ep=Math.max(0,Math.min(100,state.energy||0)),dp=Math.max(0,Math.min(100,(state.distance||0)/30*100));
+    document.querySelector('#energyText').textContent=`${Math.round(ep)}%`;document.querySelector('#energyBar').style.width=`${ep}%`;
+    document.querySelector('#distanceText').textContent=`${Math.round(dp)}%`;document.querySelector('#distanceBar').style.width=`${dp}%`;
+    document.querySelector('#scoreDash').textContent=String(state.score||0).padStart(4,'0');
+    document.querySelector('#hullDash').textContent='◆ '.repeat(Math.max(0,state.hull||0)).trim()||'DESTROYED';
+    const replyFresh=lastStateAt>0&&performance.now()-lastStateAt<1500;
+    missionSeconds+=state.connected&&replyFresh&&state.status==='flying'&&(!gestureOn||calPhase==='flight')?dt:0;const secs=Math.floor(missionSeconds);document.querySelector('#timeDash').textContent=`${String(Math.floor(secs/60)).padStart(2,'0')}:${String(secs%60).padStart(2,'0')}`;
+    const connection=document.querySelector('#connection');connection.classList.toggle('online',replyFresh&&!!state.connected);connection.textContent=!replyFresh?'UNO Q 資料流停滯，重連中…':state.connected?'遊戲已連線':'等待遊戲控制資料';
+    updateCockpitState();
+    const message=document.querySelector('#message'),title=document.querySelector('#msgTitle'),sub=document.querySelector('#msgSub'),reset=document.querySelector('#reset');let visible=false;
+    if(state.status==='landed'){title.textContent='DESTINATION REACHED';sub.textContent='靜海空間站接駁程序啟動';visible=true;}
+    else if(state.status==='energy_low'){title.textContent='能源不足';sub.textContent='剩餘能源無法支援抵達後的降落';visible=true;}
+    else if(state.status==='energy_empty'){title.textContent='能源耗盡';sub.textContent='飛船失去推進能力';visible=true;}
+    else if(state.status==='destroyed'){title.textContent='飛船嚴重受損';sub.textContent='隕石撞擊摧毀了船體';visible=true;}
+    else if(state.status==='preflight'){visible=false;}
+    else if(!replyFresh){title.textContent='UNO Q 資料暫停';sub.textContent='正在重新連線；恢復後飛行會繼續';visible=true;}
+    else if(!state.connected&&!gestureOn){title.textContent='等待飛船控制器';sub.textContent='請按右側攝影機按鈕，或在手機開啟控制頁';visible=true;}
+    else if(state.distance>27){title.textContent='接近目的地';sub.textContent='穿越最後一段隕石帶';visible=true;}
+    message.classList.toggle('show',visible);reset.classList.toggle('show',['landed','energy_low','energy_empty','destroyed'].includes(state.status));
+  }
+
+  let lastTime=performance.now();
+  function animate(now){
+    requestAnimationFrame(animate);const dt=Math.min(.04,(now-lastTime)/1000||0);lastTime=now;
+    updateTakeoff(now);
+    const replyFresh=lastStateAt>0&&now-lastStateAt<1500;
+    const live=replyFresh&&state.connected&&state.status==='flying'&&(!gestureOn||calPhase==='flight'),boost=live&&!!state.boost;
+    document.querySelector('#boostBlur').classList.toggle('active',boost);
+    document.querySelector('#impactFlash').classList.toggle('active',now<impactUntil);
+    if(live){
+      // Tilt accelerates the ship through world space; beta-positive raises altitude.
+      const [x,y]=flightInput(now);
+      pilotVelocity.x+=THREE.MathUtils.clamp(x,-1,1)*32*dt;
+      pilotVelocity.y+=THREE.MathUtils.clamp(y,-1,1)*32*dt;
+      pilotVelocity.clampLength(0,13);
+      pilotVelocity.multiplyScalar(Math.exp(-1.65*dt));
+      camera.position.addScaledVector(pilotVelocity,dt);
+      camera.position.x=THREE.MathUtils.clamp(camera.position.x,-34,34);
+      camera.position.y=THREE.MathUtils.clamp(camera.position.y,-25,25);
+      const pitch=THREE.MathUtils.clamp(y,-1,1)*.13,yaw=-THREE.MathUtils.clamp(x,-1,1)*.11;
+      camera.rotation.x+=(pitch-camera.rotation.x)*Math.min(1,dt*5);
+      camera.rotation.y+=(yaw-camera.rotation.y)*Math.min(1,dt*5);
+      // Match the ship's world position to the same approach value used by the mission rules.
+      const targetFlightZ=-500*Math.min(1,(state.distance||0)/30);
+      if(now>=impactUntil)camera.position.z+=(targetFlightZ-camera.position.z)*Math.min(1,dt*8);
+    }
+    for(let i=0;i<stars.length;i++){
+      const s=stars[i];
+      // Move the star field even when approach data pauses, so forward motion is visible.
+      s.z+=dt*(boost?125:18);
+      if(s.z-camera.position.z>5)placeFieldPoint(s);
+      starPositions[i*3]=s.x;starPositions[i*3+1]=s.y;starPositions[i*3+2]=s.z;
+    }
+    starGeometry.attributes.position.needsUpdate=true;
+    const lineArray=streakGeometry.attributes.position.array;
+    for(let i=0;i<streaks.length;i++){
+      const s=streaks[i];
+      s.z+=dt*(boost?170:24);
+      if(s.z-camera.position.z>4)placeFieldPoint(s,18,220);
+      const len=boost?Math.min(28,7+s.speed*1.25):s.len,k=i*6;
+      lineArray[k]=s.x;lineArray[k+1]=s.y;lineArray[k+2]=s.z;lineArray[k+3]=s.x;lineArray[k+4]=s.y;lineArray[k+5]=s.z-len;
+    }
+    streakGeometry.attributes.position.needsUpdate=true;streakField.material.opacity=boost?.95:.34;
+    station.position.set(0,0,-520);
+    station.rotation.z=now*.00012;station.rotation.y=Math.sin(now*.00018)*.045;
+    if(live){
+      if(spawnTimer<=0){spawnMeteor();spawnTimer=boost?rand(.5,.78):rand(.72,1.05);}else spawnTimer-=dt;
+    }
+    camera.updateMatrixWorld(true);
+    for(let i=meteors.length-1;i>=0;i--){
+      const m=meteors[i];if(live){m.group.position.addScaledVector(m.velocity,m.speed*dt);m.group.rotation.x+=m.spinX*dt;m.group.rotation.y+=m.spinY*dt;m.group.rotation.z+=m.spinZ*dt;}
+      const local=camera.worldToLocal(m.group.position.clone());
+      if(live&&Math.abs(local.z)<m.radius+1.6&&Math.hypot(local.x,local.y)<m.radius+1.15){
+        makeExplosion(m.group.position);disposeGroup(m.group);meteors.splice(i,1);impactUntil=now+700;sendGameEvent('collision');continue;
+      }
+      if(local.z>m.radius+8){disposeGroup(m.group);meteors.splice(i,1);}
+    }
+    for(let i=shots.length-1;i>=0;i--){const s=shots[i];s.life+=dt;const alpha=Math.max(0,1-s.life*3);s.beam.children.forEach((part,j)=>{part.material.opacity=alpha*[.3,.86,1,1][j];});if(s.life>.32){camera.remove(s.beam);s.beam.traverse(o=>{if(o.geometry)o.geometry.dispose();if(o.material)o.material.dispose();});shots.splice(i,1);}}
+    for(let i=explosions.length-1;i>=0;i--){
+      const e=explosions[i];e.life+=dt;const pos=e.points.geometry.attributes.position.array;
+      for(let j=0;j<e.vel.length;j++){pos[j*3]+=e.vel[j][0]*dt;pos[j*3+1]+=e.vel[j][1]*dt;pos[j*3+2]+=e.vel[j][2]*dt;}
+      e.points.geometry.attributes.position.needsUpdate=true;e.points.material.opacity=Math.max(0,1-e.life/.72);
+      if(e.life>.72){scene.remove(e.points);e.points.geometry.dispose();e.points.material.dispose();explosions.splice(i,1);}
+    }
+    if(state.status==='landed'&&camera.position.z>-520)camera.position.z-=dt*2;
+    updateHud(dt);renderer.render(scene,camera);
+  }
+  requestAnimationFrame(animate);addEventListener('resize',resize);
+</script>
+</body>
+</html>
